@@ -30,7 +30,6 @@
 
     #scores { display: flex; gap: 28px; font-size: clamp(0.8rem, 3vw, 1rem); }
 
-    /* Active power-up countdown badges */
     #fx { display: flex; gap: 8px; min-height: 22px; align-items: center; flex-wrap: wrap; justify-content: center; }
     .fx-tag {
       font-size: 0.68rem;
@@ -73,6 +72,15 @@
     }
     .dp:active { background: #39ff1422; }
     @media (hover: hover) and (pointer: fine) { #dpad { display: none; } }
+
+    #rules {
+      font-size: 0.7rem;
+      color: #39ff1499;
+      text-align: center;
+      line-height: 1.8;
+      letter-spacing: 0.5px;
+    }
+    #rules b { color: #39ff14bb; }
   </style>
 </head>
 <body>
@@ -82,7 +90,7 @@
     <span>SCORE &nbsp;<b id="score">0</b></span>
     <span>BEST &nbsp;<b id="hi">0</b></span>
   </div>
-  <div id="fx"></div><!-- active effect countdowns -->
+  <div id="fx"></div>
 
   <div id="canvas-wrap">
     <canvas id="c"></canvas>
@@ -99,12 +107,15 @@
     <div></div><div class="dp" data-d="down">▼</div><div></div>
   </div>
 
+  <div id="rules">
+    <b>↑ ↓ ← →</b> or <b>WASD</b> to move &nbsp;·&nbsp; eat <b style="color:#ff3333bb">●</b> to grow &nbsp;·&nbsp; don't bite yourself<br>
+    <b style="color:#ffdd00bb">!!</b> speed &nbsp;·&nbsp; <b style="color:#00ffff99">&gt;&lt;</b> shrink &nbsp;·&nbsp; <b style="color:#ff44ffbb">2x</b> double points &nbsp;·&nbsp; chain eats for a combo
+  </div>
+
   <script>
-    // ── Config ───────────────────────────────────────────────
     const COLS = 20, ROWS = 20;
     const BASE_MS = 160, MIN_MS = 65, ACCEL = 3;
 
-    // ── DOM ──────────────────────────────────────────────────
     const canvas  = document.getElementById('c');
     const ctx     = canvas.getContext('2d');
     const overlay = document.getElementById('overlay');
@@ -113,7 +124,6 @@
     const hiEl    = document.getElementById('hi');
     const finalEl = document.getElementById('final');
 
-    // ── Resize: largest grid-snapped square that fits ────────────────
     function resize() {
       const a = Math.min(window.innerWidth - 24, window.innerHeight - 250, 500);
       canvas.width = canvas.height = Math.floor(a / COLS) * COLS;
@@ -122,7 +132,6 @@
     window.addEventListener('resize', () => { resize(); if (!alive) draw(); });
     const cell = () => canvas.width / COLS;
 
-    // ── Audio (Web Audio API, lazy-init on first interaction) ────────
     let _ac = null;
     const ac = () => _ac || (_ac = new (window.AudioContext || window.webkitAudioContext)());
 
@@ -140,33 +149,23 @@
     const sfx = {
       eat:   ()  => beep(440, 0.07),
       pu:    ()  => { beep(660, 0.08); setTimeout(() => beep(880, 0.12), 70); },
-      // descending thud for death
       death: ()  => { beep(220, 0.1); setTimeout(() => beep(160, 0.13), 110); setTimeout(() => beep(100, 0.28, 0.35), 230); },
-      // pitch rises with combo level
       combo: (n) => beep(330 + n * 110, 0.07, 0.2),
     };
 
-    // ── Power-up definitions ───────────────────────────────────
-    // icon: two-char label drawn inside the diamond on the canvas
     const PU = {
       speed:  { color: '#ffdd00', glow: '#ffaa00', icon: '!!', label: '⚡ FAST',  ttl: 6000 },
-      shrink: { color: '#00ffff', glow: '#00aaff', icon: '><', label: '✂ SHRINK', ttl: 0    }, // instant
+      shrink: { color: '#00ffff', glow: '#00aaff', icon: '><', label: '✂ SHRINK', ttl: 0    },
       multi:  { color: '#ff44ff', glow: '#cc00ff', icon: '2x', label: '✦ 2×',     ttl: 8000 },
     };
     const PU_KEYS = Object.keys(PU);
 
-    // ── Game state ─────────────────────────────────────────────
     let snake, dir, queued, food, score, hi, timer, alive;
-    let pu      = null;   // power-up sitting on the board: { x, y, type, exp }
-    let effects = {};     // active timed effects: { speed: expireMs, multi: expireMs }
-    let combo   = 0;      // consecutive-eat streak
-    let lastEat = 0;      // timestamp of last food eaten
-    let flash   = null;   // { text, color, until } — brief canvas overlay message
+    let pu = null, effects = {}, combo = 0, lastEat = 0, flash = null;
 
     hi = +(localStorage.getItem('snek-hi') || 0);
     hiEl.textContent = hi;
 
-    // ── Placement helpers ──────────────────────────────────────
     function placeFood() {
       const occ = new Set(snake.map(s => s.x + ',' + s.y));
       if (pu) occ.add(pu.x + ',' + pu.y);
@@ -177,7 +176,7 @@
     }
 
     function maybeSpawnPu() {
-      if (pu || Math.random() > 0.28) return; // 28% chance each eat
+      if (pu || Math.random() > 0.28) return;
       const occ = new Set(snake.map(s => s.x + ',' + s.y));
       occ.add(food.x + ',' + food.y);
       let p;
@@ -186,189 +185,119 @@
       pu = { ...p, type: PU_KEYS[Math.floor(Math.random() * PU_KEYS.length)], exp: Date.now() + 9000 };
     }
 
-    // ── Start / reset ──────────────────────────────────────────
     function startGame() {
       clearTimeout(timer);
       snake   = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
       dir     = queued = { x: 1, y: 0 };
-      score   = combo  = 0;
-      lastEat = 0;
-      pu      = null; effects = {}; flash = null; alive = true;
+      score   = combo  = 0; lastEat = 0;
+      pu = null; effects = {}; flash = null; alive = true;
       scoreEl.textContent = 0;
       overlay.classList.add('hidden');
-      placeFood();
-      tick();
+      placeFood(); tick();
     }
 
-    // ── Tick ───────────────────────────────────────────────────
     function tick() {
       dir = { ...queued };
       const head = {
-        x: (snake[0].x + dir.x + COLS) % COLS,  // wrap edges
+        x: (snake[0].x + dir.x + COLS) % COLS,
         y: (snake[0].y + dir.y + ROWS) % ROWS,
       };
-
       if (snake.some(s => s.x === head.x && s.y === head.y)) return endGame();
-
       snake.unshift(head);
-
       const now = Date.now();
-      if (pu && now > pu.exp) pu = null; // board power-up timed out
-
-      // Collect a power-up
+      if (pu && now > pu.exp) pu = null;
       if (pu && head.x === pu.x && head.y === pu.y) {
         const type = pu.type; pu = null; sfx.pu();
-        if (type === 'speed')  { effects.speed = now + PU.speed.ttl; }
-        if (type === 'multi')  { effects.multi = now + PU.multi.ttl; }
+        if (type === 'speed')  effects.speed = now + PU.speed.ttl;
+        if (type === 'multi')  effects.multi = now + PU.multi.ttl;
         if (type === 'shrink') {
-          snake.splice(Math.max(3, Math.ceil(snake.length / 2))); // cut tail in half
+          snake.splice(Math.max(3, Math.ceil(snake.length / 2)));
           flash = { text: 'SHRINK!', color: '#00ffff', until: now + 950 };
         }
       }
-
-      // Eat food
       if (head.x === food.x && head.y === food.y) {
-        // Combo: consecutive eats within 2.5 s (snake grows so next food is harder to reach fast)
         combo   = (now - lastEat < 2500 && combo > 0) ? Math.min(combo + 1, 5) : 1;
         lastEat = now;
-
-        // Points = combo streak × 2× multiplier (if active)
         const pts = combo * (effects.multi && now < effects.multi ? 2 : 1);
-        score += pts;
-        scoreEl.textContent = score;
+        score += pts; scoreEl.textContent = score;
         if (score > hi) { hi = score; hiEl.textContent = hi; localStorage.setItem('snek-hi', hi); }
-
-        if (combo > 1) {
-          flash = { text: `×${combo} COMBO  +${pts}`, color: '#ffdd00', until: now + 900 };
-          sfx.combo(combo);
-        } else {
-          sfx.eat();
-        }
-        placeFood();
-        maybeSpawnPu();
-      } else {
-        snake.pop(); // no food eaten — remove tail to maintain length
-      }
-
+        if (combo > 1) { flash = { text: `×${combo} COMBO  +${pts}`, color: '#ffdd00', until: now + 900 }; sfx.combo(combo); }
+        else sfx.eat();
+        placeFood(); maybeSpawnPu();
+      } else { snake.pop(); }
       draw();
-
-      // Speed boost halves the tick interval (floored at MIN_MS)
       const base = Math.max(MIN_MS, BASE_MS - score * ACCEL);
       timer = setTimeout(tick, (effects.speed && now < effects.speed) ? Math.max(MIN_MS, base * 0.55 | 0) : base);
     }
 
     function endGame() {
-      alive = false;
-      sfx.death();
+      alive = false; sfx.death();
       finalEl.textContent = score;
-      overlay.classList.remove('hidden');
-      draw();
+      overlay.classList.remove('hidden'); draw();
     }
 
-    // ── Render ─────────────────────────────────────────────────────
     function draw() {
       const W = canvas.width, C = cell(), now = Date.now();
-
-      ctx.fillStyle = '#0a0a0a';
-      ctx.fillRect(0, 0, W, W);
-
-      // Subtle grid
+      ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, W);
       ctx.strokeStyle = '#161616'; ctx.lineWidth = 0.5;
       for (let i = 0; i <= COLS; i++) {
         ctx.beginPath(); ctx.moveTo(i*C, 0); ctx.lineTo(i*C, W); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, i*C); ctx.lineTo(W, i*C); ctx.stroke();
       }
-
-      // Food — red glowing circle
-      ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 16;
-      ctx.fillStyle = '#ff3333';
-      ctx.beginPath(); ctx.arc(food.x*C + C/2, food.y*C + C/2, C/2-1, 0, Math.PI*2); ctx.fill();
-
-      // Board power-up — pulsing diamond with icon
+      ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 16; ctx.fillStyle = '#ff3333';
+      ctx.beginPath(); ctx.arc(food.x*C+C/2, food.y*C+C/2, C/2-1, 0, Math.PI*2); ctx.fill();
       if (pu) {
-        const def   = PU[pu.type];
-        const pulse = 0.65 + 0.35 * Math.sin(now / 200); // smooth 0.65–1.0 throb
-        const cx = pu.x*C + C/2, cy = pu.y*C + C/2, r = C/2 - 1;
-        ctx.shadowColor  = def.glow; ctx.shadowBlur = 16 * pulse;
-        ctx.fillStyle    = def.color; ctx.globalAlpha = 0.7 + 0.3 * pulse;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r, cy);
-        ctx.lineTo(cx, cy+r); ctx.lineTo(cx-r, cy);
-        ctx.closePath(); ctx.fill();
+        const def = PU[pu.type], pulse = 0.65 + 0.35 * Math.sin(now / 200);
+        const cx = pu.x*C+C/2, cy = pu.y*C+C/2, r = C/2-1;
+        ctx.shadowColor = def.glow; ctx.shadowBlur = 16*pulse;
+        ctx.fillStyle = def.color; ctx.globalAlpha = 0.7+0.3*pulse;
+        ctx.beginPath(); ctx.moveTo(cx,cy-r); ctx.lineTo(cx+r,cy); ctx.lineTo(cx,cy+r); ctx.lineTo(cx-r,cy); ctx.closePath(); ctx.fill();
         ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-        // two-char label inside the diamond
-        ctx.fillStyle = '#000';
-        ctx.font = `bold ${Math.max(6, C * 0.34) | 0}px monospace`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(def.icon, cx, cy);
+        ctx.fillStyle = '#000'; ctx.font = `bold ${Math.max(6,C*0.34)|0}px monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(def.icon, cx, cy);
       }
-
-      // Snake — neon green; head is brighter
       snake.forEach((seg, i) => {
-        ctx.shadowColor = '#39ff14'; ctx.shadowBlur = i === 0 ? 20 : 8;
-        ctx.fillStyle   = i === 0 ? '#90ff55' : '#39ff14';
+        ctx.shadowColor = '#39ff14'; ctx.shadowBlur = i===0 ? 20 : 8;
+        ctx.fillStyle = i===0 ? '#90ff55' : '#39ff14';
         ctx.fillRect(seg.x*C+1, seg.y*C+1, C-2, C-2);
       });
       ctx.shadowBlur = 0;
-
-      // Flash message (combo streak, shrink notice) — fades out
       if (flash && now < flash.until) {
-        ctx.globalAlpha  = Math.min(1, (flash.until - now) / 400);
-        ctx.fillStyle    = flash.color;
-        ctx.shadowColor  = flash.color; ctx.shadowBlur = 12;
-        ctx.font         = `bold ${Math.round(C * 0.85)}px monospace`;
-        ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
+        ctx.globalAlpha = Math.min(1,(flash.until-now)/400);
+        ctx.fillStyle = flash.color; ctx.shadowColor = flash.color; ctx.shadowBlur = 12;
+        ctx.font = `bold ${Math.round(C*0.85)}px monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(flash.text, W/2, W/2);
         ctx.shadowBlur = 0; ctx.globalAlpha = 1;
       }
-
-      // Refresh the active-effect countdown badges in the DOM
-      refreshFxBadges(now);
-    }
-
-    function refreshFxBadges(now) {
       const tags = [];
-      if (effects.speed && now < effects.speed)
-        tags.push(`<span class="fx-tag" style="color:#ffdd00;border-color:#ffdd00">⚡ ${((effects.speed-now)/1000).toFixed(1)}s</span>`);
-      if (effects.multi && now < effects.multi)
-        tags.push(`<span class="fx-tag" style="color:#ff44ff;border-color:#ff44ff">✦ 2× ${((effects.multi-now)/1000).toFixed(1)}s</span>`);
+      if (effects.speed && now < effects.speed) tags.push(`<span class="fx-tag" style="color:#ffdd00;border-color:#ffdd00">⚡ ${((effects.speed-now)/1000).toFixed(1)}s</span>`);
+      if (effects.multi && now < effects.multi) tags.push(`<span class="fx-tag" style="color:#ff44ff;border-color:#ff44ff">✦ 2× ${((effects.multi-now)/1000).toFixed(1)}s</span>`);
       fxEl.innerHTML = tags.join('');
     }
 
-    // ── Steering ───────────────────────────────────────────────
     function steer(d) { if (d.x !== -dir.x || d.y !== -dir.y) queued = d; }
-
-    const KEYS = {
-      ArrowUp:{x:0,y:-1}, w:{x:0,y:-1}, ArrowDown:{x:0,y:1}, s:{x:0,y:1},
-      ArrowLeft:{x:-1,y:0}, a:{x:-1,y:0}, ArrowRight:{x:1,y:0}, d:{x:1,y:0},
-    };
+    const KEYS = { ArrowUp:{x:0,y:-1},w:{x:0,y:-1},ArrowDown:{x:0,y:1},s:{x:0,y:1},ArrowLeft:{x:-1,y:0},a:{x:-1,y:0},ArrowRight:{x:1,y:0},d:{x:1,y:0} };
     document.addEventListener('keydown', e => {
-      const d = KEYS[e.key];
-      if (d) { e.preventDefault(); steer(d); }
-      if ((e.key === 'Enter' || e.key === ' ') && !alive) startGame();
+      const d = KEYS[e.key]; if (d) { e.preventDefault(); steer(d); }
+      if ((e.key==='Enter'||e.key===' ') && !alive) startGame();
     });
-
-    const DMAP = { up:{x:0,y:-1}, down:{x:0,y:1}, left:{x:-1,y:0}, right:{x:1,y:0} };
+    const DMAP = { up:{x:0,y:-1},down:{x:0,y:1},left:{x:-1,y:0},right:{x:1,y:0} };
     document.querySelectorAll('.dp').forEach(btn => {
       const go = () => steer(DMAP[btn.dataset.d]);
-      btn.addEventListener('touchstart', e => { e.preventDefault(); go(); }, { passive: false });
+      btn.addEventListener('touchstart', e => { e.preventDefault(); go(); }, {passive:false});
       btn.addEventListener('click', go);
     });
-
-    // Canvas swipe support
     let t0 = null;
-    canvas.addEventListener('touchstart', e => { t0 = e.touches[0]; }, { passive: true });
+    canvas.addEventListener('touchstart', e => { t0 = e.touches[0]; }, {passive:true});
     canvas.addEventListener('touchend', e => {
       if (!t0) return;
-      const dx = e.changedTouches[0].clientX - t0.clientX;
-      const dy = e.changedTouches[0].clientY - t0.clientY;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) > 20)
-        steer(Math.abs(dx) > Math.abs(dy) ? (dx>0?{x:1,y:0}:{x:-1,y:0}) : (dy>0?{x:0,y:1}:{x:0,y:-1}));
-      t0 = null;
-    }, { passive: true });
-
+      const dx = e.changedTouches[0].clientX-t0.clientX, dy = e.changedTouches[0].clientY-t0.clientY;
+      if (Math.max(Math.abs(dx),Math.abs(dy))>20)
+        steer(Math.abs(dx)>Math.abs(dy)?(dx>0?{x:1,y:0}:{x:-1,y:0}):(dy>0?{x:0,y:1}:{x:0,y:-1}));
+      t0=null;
+    }, {passive:true});
     document.getElementById('btn').addEventListener('click', startGame);
-
     startGame();
   </script>
 </body>
