@@ -72,6 +72,15 @@
     }
     .dp:active { background: #39ff1422; }
     @media (hover: hover) and (pointer: fine) { #dpad { display: none; } }
+
+    #rules {
+      font-size: 0.7rem;
+      color: #39ff1499;
+      text-align: center;
+      line-height: 1.8;
+      letter-spacing: 0.5px;
+    }
+    #rules b { color: #39ff14bb; }
   </style>
 </head>
 <body>
@@ -96,6 +105,11 @@
     <div></div><div class="dp" data-d="up">▲</div><div></div>
     <div class="dp" data-d="left">◀</div><div></div><div class="dp" data-d="right">▶</div>
     <div></div><div class="dp" data-d="down">▼</div><div></div>
+  </div>
+
+  <div id="rules">
+    <b>↑ ↓ ← →</b> or <b>WASD</b> to move &nbsp;·&nbsp; eat <b style="color:#ff3333bb">●</b> to grow &nbsp;·&nbsp; don't bite yourself<br>
+    <b style="color:#ffdd00bb">!!</b> speed &nbsp;·&nbsp; <b style="color:#00ffff99">&gt;&lt;</b> shrink &nbsp;·&nbsp; <b style="color:#ff44ffbb">2x</b> double points &nbsp;·&nbsp; chain eats for a combo
   </div>
 
   <script>
