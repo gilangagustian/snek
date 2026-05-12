@@ -11,8 +11,9 @@ A Snake game in a single self-contained HTML file — no build step, no dependen
 - **Canvas rendering** — vanilla JS, zero external dependencies
 - **Power-ups** — pulsing diamond pickups that spawn randomly during play:
   - ⚡ **Speed boost** (yellow `!!`) — halves the tick interval for 6 s
-  - ✂ **Shrink** (cyan `><`) — instantly cuts the snake's tail in half (minimum length 3)
+  - ☠ **Cursed controls** (purple `☠`) — inverts all steering for 4 s (up moves down, left moves right)
   - ✦ **2× multiplier** (magenta `2x`) — doubles all points earned for 8 s
+- **Bonus orb** — a gold ★ star that appears after eating food; grab it for +3 pts instantly with no snake growth; expires after 5 s
 - **Combo scoring** — eating food within 2.5 s of the last eat builds a streak (×2 up to ×5), multiplying points per eat; stacks with the 2× power-up for up to ×10 per food
 - **Sound effects** — synthesised via Web Audio API (no audio files): blip on eat, two-tone chime on power-up, rising pitch per combo level, descending thud on death
 - **Speed scaling** — base tick interval decreases with score, capped at a minimum
@@ -40,6 +41,7 @@ A Snake game in a single self-contained HTML file — no build step, no dependen
 | ×5 combo streak | +5 per food |
 | 2× multiplier active | doubles the above |
 | ×5 combo + 2× multiplier | +10 per food |
+| Grab bonus orb | +3 (no growth) |
 
 ## Customising
 
@@ -53,7 +55,7 @@ const MIN_MS  = 65;   // fastest possible tick (ms)
 const ACCEL   = 3;    // ms removed per point scored
 ```
 
-Power-up colours, icons, durations, and spawn probability (`0.28`) are in the `PU` object and `maybeSpawnPu()` function just below.
+Power-up colours, icons, durations, and spawn probability (`0.28`) are in the `PU` object and `maybeSpawnPu()` function just below. The bonus orb spawn probability (`0.22`) and TTL (`5000 ms`) are in `maybeSpawnBonus()`.
 
 ## Running locally
 

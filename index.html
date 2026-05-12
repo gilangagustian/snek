@@ -112,8 +112,8 @@
   <div id="rules">
     <b>↑ ↓ ← →</b> or <b>WASD</b> to move &nbsp;·&nbsp; eat <b style="color:#ff3333bb">●</b> to grow<br>
     don't bite yourself<br>
-    <b style="color:#ffdd00bb">!!</b> speed &nbsp;·&nbsp; <b style="color:#00ffff99">&gt;&lt;</b> shrink &nbsp;·&nbsp; <b style="color:#ff44ffbb">2x</b> double points<br>
-    chain eats for a combo
+    <b style="color:#ffdd00bb">!!</b> fast &nbsp;·&nbsp; <b style="color:#bb44ffbb">☠</b> cursed controls &nbsp;·&nbsp; <b style="color:#ff44ffbb">2x</b> double points<br>
+    <b style="color:#ffcc00bb">★</b> bonus +3 pts &nbsp;·&nbsp; chain eats for a combo
   </div>
 
   <script>
@@ -153,19 +153,21 @@
     const sfx = {
       eat:   ()  => beep(440, 0.07),
       pu:    ()  => { beep(660, 0.08); setTimeout(() => beep(880, 0.12), 70); },
+      bonus: ()  => { beep(550, 0.06); setTimeout(() => beep(770, 0.09), 60); setTimeout(() => beep(990, 0.07), 120); },
+      curse: ()  => { beep(180, 0.15, 0.3, 'sawtooth'); setTimeout(() => beep(140, 0.2, 0.3, 'sawtooth'), 140); },
       death: ()  => { beep(220, 0.1); setTimeout(() => beep(160, 0.13), 110); setTimeout(() => beep(100, 0.28, 0.35), 230); },
       combo: (n) => beep(330 + n * 110, 0.07, 0.2),
     };
 
     const PU = {
-      speed:  { color: '#ffdd00', glow: '#ffaa00', icon: '!!', label: '⚡ FAST',  ttl: 6000 },
-      shrink: { color: '#00ffff', glow: '#00aaff', icon: '><', label: '✂ SHRINK', ttl: 0    },
-      multi:  { color: '#ff44ff', glow: '#cc00ff', icon: '2x', label: '✦ 2×',     ttl: 8000 },
+      speed: { color: '#ffdd00', glow: '#ffaa00', icon: '!!', label: '⚡ FAST',  ttl: 6000 },
+      curse: { color: '#bb44ff', glow: '#7700dd', icon: '☠',  label: '☠ CURSE', ttl: 4000 },
+      multi: { color: '#ff44ff', glow: '#cc00ff', icon: '2x', label: '✦ 2×',     ttl: 8000 },
     };
     const PU_KEYS = Object.keys(PU);
 
     let snake, dir, queued, food, score, hi, timer, alive;
-    let pu = null, effects = {}, combo = 0, lastEat = 0, flash = null;
+    let pu = null, bonus = null, effects = {}, combo = 0, lastEat = 0, flash = null;
 
     hi = +(localStorage.getItem('snek-hi') || 0);
     hiEl.textContent = hi;
@@ -173,6 +175,7 @@
     function placeFood() {
       const occ = new Set(snake.map(s => s.x + ',' + s.y));
       if (pu) occ.add(pu.x + ',' + pu.y);
+      if (bonus) occ.add(bonus.x + ',' + bonus.y);
       let f;
       do { f = { x: (Math.random() * COLS) | 0, y: (Math.random() * ROWS) | 0 }; }
       while (occ.has(f.x + ',' + f.y));
@@ -183,10 +186,22 @@
       if (pu || Math.random() > 0.28) return;
       const occ = new Set(snake.map(s => s.x + ',' + s.y));
       occ.add(food.x + ',' + food.y);
+      if (bonus) occ.add(bonus.x + ',' + bonus.y);
       let p;
       do { p = { x: (Math.random() * COLS) | 0, y: (Math.random() * ROWS) | 0 }; }
       while (occ.has(p.x + ',' + p.y));
       pu = { ...p, type: PU_KEYS[Math.floor(Math.random() * PU_KEYS.length)], exp: Date.now() + 9000 };
+    }
+
+    function maybeSpawnBonus() {
+      if (bonus || Math.random() > 0.22) return;
+      const occ = new Set(snake.map(s => s.x + ',' + s.y));
+      occ.add(food.x + ',' + food.y);
+      if (pu) occ.add(pu.x + ',' + pu.y);
+      let b;
+      do { b = { x: (Math.random() * COLS) | 0, y: (Math.random() * ROWS) | 0 }; }
+      while (occ.has(b.x + ',' + b.y));
+      bonus = { ...b, exp: Date.now() + 5000 };
     }
 
     function startGame() {
@@ -194,7 +209,7 @@
       snake   = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
       dir     = queued = { x: 1, y: 0 };
       score   = combo  = 0; lastEat = 0;
-      pu = null; effects = {}; flash = null; alive = true;
+      pu = null; bonus = null; effects = {}; flash = null; alive = true;
       scoreEl.textContent = 0;
       overlay.classList.add('hidden');
       placeFood(); tick();
@@ -210,13 +225,17 @@
       snake.unshift(head);
       const now = Date.now();
       if (pu && now > pu.exp) pu = null;
+      if (bonus && now > bonus.exp) bonus = null;
       if (pu && head.x === pu.x && head.y === pu.y) {
-        const type = pu.type; pu = null; sfx.pu();
-        if (type === 'speed')  effects.speed = now + PU.speed.ttl;
-        if (type === 'multi')  effects.multi = now + PU.multi.ttl;
-        if (type === 'shrink') {
-          snake.splice(Math.max(3, Math.ceil(snake.length / 2)));
-          flash = { text: 'SHRINK!', color: '#00ffff', until: now + 950 };
+        const type = pu.type; pu = null;
+        if (type === 'curse') {
+          effects.curse = now + PU.curse.ttl;
+          flash = { text: '☠ CURSED!', color: '#bb44ff', until: now + 950 };
+          sfx.curse();
+        } else {
+          sfx.pu();
+          if (type === 'speed') effects.speed = now + PU.speed.ttl;
+          if (type === 'multi') effects.multi = now + PU.multi.ttl;
         }
       }
       if (head.x === food.x && head.y === food.y) {
@@ -227,8 +246,18 @@
         if (score > hi) { hi = score; hiEl.textContent = hi; localStorage.setItem('snek-hi', hi); }
         if (combo > 1) { flash = { text: `×${combo} COMBO  +${pts}`, color: '#ffdd00', until: now + 900 }; sfx.combo(combo); }
         else sfx.eat();
-        placeFood(); maybeSpawnPu();
-      } else { snake.pop(); }
+        placeFood(); maybeSpawnPu(); maybeSpawnBonus();
+      } else {
+        if (bonus && head.x === bonus.x && head.y === bonus.y) {
+          bonus = null;
+          const pts = 3 * (effects.multi && now < effects.multi ? 2 : 1);
+          score += pts; scoreEl.textContent = score;
+          if (score > hi) { hi = score; hiEl.textContent = hi; localStorage.setItem('snek-hi', hi); }
+          flash = { text: `★ BONUS  +${pts}`, color: '#ffcc00', until: now + 900 };
+          sfx.bonus();
+        }
+        snake.pop();
+      }
       draw();
       const base = Math.max(MIN_MS, BASE_MS - score * ACCEL);
       timer = setTimeout(tick, (effects.speed && now < effects.speed) ? Math.max(MIN_MS, base * 0.55 | 0) : base);
@@ -260,6 +289,21 @@
         ctx.fillStyle = '#000'; ctx.font = `bold ${Math.max(6,C*0.34)|0}px monospace`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(def.icon, cx, cy);
       }
+      if (bonus) {
+        const pulse = 0.65 + 0.35 * Math.sin(now / 180);
+        const cx = bonus.x*C+C/2, cy = bonus.y*C+C/2, r = C/2-1;
+        ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 14*pulse;
+        ctx.fillStyle = '#ffcc00'; ctx.globalAlpha = 0.7+0.3*pulse;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r*0.35, cy-r*0.35);
+        ctx.lineTo(cx+r, cy); ctx.lineTo(cx+r*0.35, cy+r*0.35);
+        ctx.lineTo(cx, cy+r); ctx.lineTo(cx-r*0.35, cy+r*0.35);
+        ctx.lineTo(cx-r, cy); ctx.lineTo(cx-r*0.35, cy-r*0.35);
+        ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+        ctx.fillStyle = '#000'; ctx.font = `bold ${Math.max(6,C*0.34)|0}px monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', cx, cy);
+      }
       snake.forEach((seg, i) => {
         ctx.shadowColor = '#39ff14'; ctx.shadowBlur = i===0 ? 20 : 8;
         ctx.fillStyle = i===0 ? '#90ff55' : '#39ff14';
@@ -276,11 +320,15 @@
       }
       const tags = [];
       if (effects.speed && now < effects.speed) tags.push(`<span class="fx-tag" style="color:#ffdd00;border-color:#ffdd00">⚡ ${((effects.speed-now)/1000).toFixed(1)}s</span>`);
+      if (effects.curse && now < effects.curse) tags.push(`<span class="fx-tag" style="color:#bb44ff;border-color:#bb44ff">☠ CURSE ${((effects.curse-now)/1000).toFixed(1)}s</span>`);
       if (effects.multi && now < effects.multi) tags.push(`<span class="fx-tag" style="color:#ff44ff;border-color:#ff44ff">✦ 2× ${((effects.multi-now)/1000).toFixed(1)}s</span>`);
       fxEl.innerHTML = tags.join('');
     }
 
-    function steer(d) { if (d.x !== -dir.x || d.y !== -dir.y) queued = d; }
+    function steer(d) {
+      const eff = (effects.curse && Date.now() < effects.curse) ? { x: -d.x, y: -d.y } : d;
+      if (eff.x !== -dir.x || eff.y !== -dir.y) queued = eff;
+    }
     const KEYS = { ArrowUp:{x:0,y:-1},w:{x:0,y:-1},ArrowDown:{x:0,y:1},s:{x:0,y:1},ArrowLeft:{x:-1,y:0},a:{x:-1,y:0},ArrowRight:{x:1,y:0},d:{x:1,y:0} };
     document.addEventListener('keydown', e => {
       const d = KEYS[e.key]; if (d) { e.preventDefault(); steer(d); }
@@ -307,15 +355,60 @@
     // Chrome ignores data: URIs for manifests; build one via Blob URL instead.
     // We also need a service worker for the Android install prompt.
     (function () {
-      // Draw a 192×192 icon with canvas so we get a real PNG data URL
-      const ic = document.createElement('canvas');
-      ic.width = ic.height = 192;
-      const x = ic.getContext('2d');
-      x.fillStyle = '#0a0a0a'; x.fillRect(0, 0, 192, 192);
-      x.shadowColor = '#39ff14'; x.shadowBlur = 28;
-      x.fillStyle = '#39ff14';
-      x.beginPath(); x.arc(96, 96, 68, 0, Math.PI * 2); x.fill();
-      const iconURL = ic.toDataURL('image/png');
+      // Draw an S-shaped snake as the app icon
+      function makeIcon(sz) {
+        const ic = document.createElement('canvas');
+        ic.width = ic.height = sz;
+        const x = ic.getContext('2d');
+        x.fillStyle = '#0a0a0a';
+        x.fillRect(0, 0, sz, sz);
+
+        const u = Math.floor(sz / 6);        // cell size (~32 for 192px)
+        const g = Math.max(1, Math.round(u * 0.07)); // segment gap
+        const ox = Math.floor((sz - 4 * u) / 2);
+        const oy = Math.floor((sz - 5 * u) / 2);
+
+        // S-shaped body: tail at [0,4], head at [3,0], tracing an S curve
+        const body = [[0,4],[1,4],[2,4],[3,4],[3,3],[3,2],[2,2],[1,2],[0,2],[0,1],[0,0],[1,0],[2,0]];
+        const head = [3, 0];
+
+        x.shadowColor = '#39ff14'; x.shadowBlur = 8;
+        x.fillStyle = '#39ff14';
+        body.forEach(seg => {
+          x.fillRect(ox + seg[0]*u + g, oy + seg[1]*u + g, u - 2*g, u - 2*g);
+        });
+
+        // Head — brighter with stronger glow
+        const hw = u - 2*g;
+        const hx = ox + head[0]*u + g, hy = oy + head[1]*u + g;
+        x.shadowColor = '#90ff55'; x.shadowBlur = 18;
+        x.fillStyle = '#90ff55';
+        x.fillRect(hx, hy, hw, hw);
+
+        // Eye (head faces right: upper-right of head cell)
+        x.shadowBlur = 0;
+        const er = Math.max(2, hw * 0.15);
+        x.fillStyle = '#0a0a0a';
+        x.beginPath();
+        x.arc(hx + hw * 0.74, hy + hw * 0.26, er, 0, Math.PI * 2);
+        x.fill();
+
+        // Forked tongue extending right from head
+        const tBase = hx + hw;
+        const tMid  = hy + hw / 2;
+        const tLen  = Math.max(4, u * 0.38);
+        const tFork = Math.max(2, tLen * 0.38);
+        x.strokeStyle = '#ff3333'; x.lineWidth = Math.max(1, hw * 0.1);
+        x.lineCap = 'round'; x.shadowColor = '#ff0000'; x.shadowBlur = 5;
+        x.beginPath(); x.moveTo(tBase, tMid); x.lineTo(tBase + tLen * 0.6, tMid); x.stroke();
+        x.beginPath(); x.moveTo(tBase + tLen * 0.6, tMid); x.lineTo(tBase + tLen, tMid - tFork); x.stroke();
+        x.beginPath(); x.moveTo(tBase + tLen * 0.6, tMid); x.lineTo(tBase + tLen, tMid + tFork); x.stroke();
+        x.shadowBlur = 0;
+
+        return ic.toDataURL('image/png');
+      }
+
+      const iconURL = makeIcon(192);
 
       // Inject apple-touch-icon for iOS home screen
       const atIcon = document.createElement('link');
