@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- PWA: iOS home-screen support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Snek">
+  <meta name="theme-color" content="#0a0a0a">
+  <!-- Inline manifest for single-file PWA (Android/Chrome install) -->
+  <link rel="manifest" href='data:application/manifest+json,{"name":"Snek","short_name":"Snek","display":"standalone","background_color":"%230a0a0a","theme_color":"%230a0a0a","start_url":".","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 100 100%22%3E%3Crect width%3D%22100%22 height%3D%22100%22 fill%3D%22%230a0a0a%22%2F%3E%3Ccircle cx%3D%2250%22 cy%3D%2250%22 r%3D%2240%22 fill%3D%22%2339ff14%22%2F%3E%3C%2Fsvg%3E","sizes":"any","type":"image/svg+xml"}]}'>
+  <title>Snek</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #39ff14;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      gap: 10px;
+      padding: 12px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    h1 {
+      font-size: clamp(1.4rem, 5vw, 2rem);
+      letter-spacing: 6px;
+      text-shadow: 0 0 14px #39ff14;
+    }
+
+    #scores {
+      display: flex;
+      gap: 28px;
+      font-size: clamp(0.8rem, 3vw, 1rem);
+    }
+
+    /* Canvas wrapper allows the overlay to sit on top */
+    #canvas-wrap { position: relative; }
+
+    canvas {
+      display: block;
+      border: 2px solid #39ff14;
+      box-shadow: 0 0 24px #39ff1444;
+    }
+
+    /* Game-over overlay */
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 10, 10, 0.88);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      text-align: center;
+    }
+    #overlay.hidden { display: none; }
+    #overlay h2 { font-size: clamp(1.4rem, 6vw, 2.2rem); text-shadow: 0 0 12px #39ff14; }
+    #overlay p  { font-size: clamp(0.9rem, 3vw, 1.1rem); }
+
+    button {
+      background: transparent;
+      border: 2px solid #39ff14;
+      color: #39ff14;
+      font-family: inherit;
+      font-size: clamp(0.85rem, 3vw, 1rem);
+      padding: 8px 28px;
+      cursor: pointer;
+      letter-spacing: 3px;
+      text-shadow: 0 0 6px #39ff14;
+      box-shadow: 0 0 14px #39ff1444;
+      transition: background 0.15s;
+    }
+    button:hover, button:focus { background: #39ff1422; outline: none; }
+
+    /* Mobile D-pad */
+    #dpad {
+      display: grid;
+      grid-template: repeat(3, 54px) / repeat(3, 54px);
+      gap: 4px;
+    }
+    .dp {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #111;
+      border: 1px solid #39ff1466;
+      border-radius: 8px;
+      font-size: 1.4rem;
+      color: #39ff14;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .dp:active { background: #39ff1422; }
+
+    /* Hide d-pad when mouse is the primary input */
+    @media (hover: hover) and (pointer: fine) { #dpad { display: none; } }
+  </style>
+</head>
+<body>
+
+  <h1>SNEK</h1>
+
+  <div id="scores">
+    <span>SCORE &nbsp;<b id="score">0</b></span>
+    <span>BEST &nbsp;<b id="hi">0</b></span>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div id="overlay" class="hidden">
+      <h2>GAME OVER</h2>
+      <p>Score: <span id="final">0</span></p>
+      <button id="btn">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <!-- D-pad: center cell intentionally empty -->
+  <div id="dpad">
+    <div></div> <div class="dp" data-d="up">▲</div>    <div></div>
+    <div class="dp" data-d="left">◀</div> <div></div>  <div class="dp" data-d="right">▶</div>
+    <div></div> <div class="dp" data-d="down">▼</div>  <div></div>
+  </div>
+
+  <script>
+    // ── Config ──────────────────────────────────────────────────────
+    const COLS      = 20;    // grid columns
+    const ROWS      = 20;    // grid rows
+    const BASE_MS   = 160;   // starting tick interval (ms)
+    const MIN_MS    = 65;    // fastest possible tick
+    const ACCEL     = 3;     // ms shaved off per food eaten
+
+    // ── DOM refs ────────────────────────────────────────────────────
+    const canvas  = document.getElementById('c');
+    const ctx     = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const scoreEl = document.getElementById('score');
+    const hiEl    = document.getElementById('hi');
+    const finalEl = document.getElementById('final');
+
+    // ── Responsive sizing: largest square that fits the viewport ────
+    function resize() {
+      const avail = Math.min(window.innerWidth - 24, window.innerHeight - 220, 500);
+      canvas.width = canvas.height = Math.floor(avail / COLS) * COLS;
+    }
+    resize();
+    window.addEventListener('resize', () => { resize(); if (!alive) draw(); });
+
+    const cell = () => canvas.width / COLS;  // pixel size of one grid cell
+
+    // ── Persistent high score ────────────────────────────────────────
+    let hi = +(localStorage.getItem('snek-hi') || 0);
+    hiEl.textContent = hi;
+
+    // ── Game state ───────────────────────────────────────────────────
+    let snake, dir, queued, food, score, timer, alive;
+
+    function placeFood() {
+      // Pick a random cell not occupied by the snake
+      const taken = new Set(snake.map(s => s.x + ',' + s.y));
+      let f;
+      do { f = { x: (Math.random() * COLS) | 0, y: (Math.random() * ROWS) | 0 }; }
+      while (taken.has(f.x + ',' + f.y));
+      food = f;
+    }
+
+    function startGame() {
+      clearTimeout(timer);
+      // Three-segment snake starting in the middle, heading right
+      snake  = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+      dir    = { x: 1, y: 0 };
+      queued = { x: 1, y: 0 };
+      score  = 0;
+      alive  = true;
+      scoreEl.textContent = 0;
+      overlay.classList.add('hidden');
+      placeFood();
+      tick();
+    }
+
+    // ── Game tick: move snake, check collisions, eat food ────────────
+    function tick() {
+      dir = { ...queued };
+
+      // New head position wraps around edges (no wall death)
+      const head = {
+        x: (snake[0].x + dir.x + COLS) % COLS,
+        y: (snake[0].y + dir.y + ROWS) % ROWS,
+      };
+
+      // Self-collision ends the game
+      if (snake.some(s => s.x === head.x && s.y === head.y)) return endGame();
+
+      snake.unshift(head);
+
+      if (head.x === food.x && head.y === food.y) {
+        // Ate food: keep tail (snake grows), update score
+        score++;
+        scoreEl.textContent = score;
+        if (score > hi) {
+          hi = score;
+          hiEl.textContent = hi;
+          localStorage.setItem('snek-hi', hi);
+        }
+        placeFood();
+      } else {
+        snake.pop();  // didn't eat, remove tail to maintain length
+      }
+
+      draw();
+      // Speed increases with score, capped at MIN_MS
+      timer = setTimeout(tick, Math.max(MIN_MS, BASE_MS - score * ACCEL));
+    }
+
+    function endGame() {
+      alive = false;
+      finalEl.textContent = score;
+      overlay.classList.remove('hidden');
+      draw();  // render final frame
+    }
+
+    // ── Render ───────────────────────────────────────────────────────
+    function draw() {
+      const W = canvas.width;
+      const C = cell();
+
+      // Dark background
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, W, W);
+
+      // Subtle grid lines for visual reference
+      ctx.strokeStyle = '#161616';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i <= COLS; i++) {
+        ctx.beginPath(); ctx.moveTo(i * C, 0); ctx.lineTo(i * C, W); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * C); ctx.lineTo(W, i * C); ctx.stroke();
+      }
+
+      // Food — bright red circle with glow
+      ctx.shadowColor = '#ff2020';
+      ctx.shadowBlur  = 16;
+      ctx.fillStyle   = '#ff3333';
+      ctx.beginPath();
+      ctx.arc(food.x * C + C / 2, food.y * C + C / 2, C / 2 - 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Snake — neon green rectangles; head is slightly lighter/brighter
+      snake.forEach((seg, i) => {
+        ctx.shadowColor = '#39ff14';
+        ctx.shadowBlur  = i === 0 ? 20 : 8;
+        ctx.fillStyle   = i === 0 ? '#90ff55' : '#39ff14';
+        ctx.fillRect(seg.x * C + 1, seg.y * C + 1, C - 2, C - 2);
+      });
+
+      ctx.shadowBlur = 0;
+    }
+
+    // ── Steer helper: ignore 180° reversals ──────────────────────────
+    function steer(d) {
+      if (d.x !== -dir.x || d.y !== -dir.y) queued = d;
+    }
+
+    // ── Keyboard input (arrows + WASD) ───────────────────────────────
+    const KEYS = {
+      ArrowUp: { x: 0, y: -1 }, w: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 }, s: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 }, a: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 }, d: { x: 1, y: 0 },
+    };
+    document.addEventListener('keydown', e => {
+      const d = KEYS[e.key];
+      if (d) { e.preventDefault(); steer(d); }
+      if ((e.key === 'Enter' || e.key === ' ') && !alive) startGame();
+    });
+
+    // ── On-screen D-pad ──────────────────────────────────────────────
+    const DPAD = {
+      up: { x: 0, y: -1 }, down: { x: 0, y: 1 },
+      left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
+    };
+    document.querySelectorAll('.dp').forEach(btn => {
+      const go = () => steer(DPAD[btn.dataset.d]);
+      btn.addEventListener('touchstart', e => { e.preventDefault(); go(); }, { passive: false });
+      btn.addEventListener('click', go);
+    });
+
+    // ── Swipe gestures on the canvas ─────────────────────────────────
+    let t0 = null;
+    canvas.addEventListener('touchstart', e => { t0 = e.touches[0]; }, { passive: true });
+    canvas.addEventListener('touchend', e => {
+      if (!t0) return;
+      const dx = e.changedTouches[0].clientX - t0.clientX;
+      const dy = e.changedTouches[0].clientY - t0.clientY;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > 20) {
+        steer(Math.abs(dx) > Math.abs(dy)
+          ? (dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 })
+          : (dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 }));
+      }
+      t0 = null;
+    }, { passive: true });
+
+    // ── Restart button ───────────────────────────────────────────────
+    document.getElementById('btn').addEventListener('click', startGame);
+
+    // ── Go! ──────────────────────────────────────────────────────────
+    startGame();
+  </script>
+</body>
+</html>
