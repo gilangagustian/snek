@@ -1,8 +1,14 @@
 # Snek
 
+![Static Badge](https://img.shields.io/badge/dependencies-none-39ff14)
+![Static Badge](https://img.shields.io/badge/build%20step-none-39ff14)
+![Static Badge](https://img.shields.io/badge/PWA-installable-39ff14)
+
 A Snake game in a single self-contained HTML file — no build step, no dependencies, no server required.
 
 **[Play it live →](https://gilangagustian.github.io/snek/)**
+
+![Snek gameplay — a neon-green snake on a dark grid, next to a magenta 2x power-up, a gold bonus star, and red food, with the score and an active speed-boost timer shown above](screenshot.png)
 
 ---
 
