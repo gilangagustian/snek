@@ -85,6 +85,21 @@
       letter-spacing: 0.5px;
     }
     #rules b { color: #39ff14bb; }
+
+    #legal {
+      font-size: 0.7rem;
+      color: #39ff1466;
+      text-align: center;
+      letter-spacing: 0.5px;
+    }
+    #legal a {
+      display: inline-block;
+      padding: 8px 8px;
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    #legal a:hover, #legal a:focus-visible { color: #39ff14bb; }
   </style>
 </head>
 <body>
@@ -118,6 +133,11 @@
     <b style="color:#ffcc00bb">★</b> bonus +3 pts &nbsp;·&nbsp; chain eats for a combo
   </div>
 
+  <div id="legal">
+    <a href="https://ideathatworks.de/impressum.html">Impressum</a>
+    <a href="https://ideathatworks.de/datenschutz.html">Datenschutz</a>
+  </div>
+
   <script>
     const COLS = 20, ROWS = 20;
     const BASE_MS = 160, MIN_MS = 65, ACCEL = 3;
@@ -131,7 +151,7 @@
     const finalEl = document.getElementById('final');
 
     function resize() {
-      const a = Math.min(window.innerWidth - 24, window.innerHeight - 250, 500);
+      const a = Math.min(window.innerWidth - 24, window.innerHeight - 286, 500);
       canvas.width = canvas.height = Math.floor(a / COLS) * COLS;
     }
     resize();
