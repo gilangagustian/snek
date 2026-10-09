@@ -1,2 +1,74 @@
-# snek
-A tiny snake game. One HTML file, no dependencies.
+# Snek
+
+![Static Badge](https://img.shields.io/badge/dependencies-none-39ff14)
+![Static Badge](https://img.shields.io/badge/build%20step-none-39ff14)
+![Static Badge](https://img.shields.io/badge/PWA-installable-39ff14)
+
+A Snake game in a single self-contained HTML file — no build step, no dependencies, no server required.
+
+**[Play it live →](https://gilangagustian.github.io/snek/)**
+
+![Snek gameplay — a neon-green snake on a dark grid, next to a magenta 2x power-up, a gold bonus star, and red food, with the score and an active speed-boost timer shown above](screenshot.png)
+
+---
+
+## Features
+
+- **Canvas rendering** — vanilla JS, zero external dependencies
+- **Power-ups** — pulsing diamond pickups that spawn randomly during play:
+  - ⚡ **Speed boost** (yellow `!!`) — halves the tick interval for 6 s
+  - ☠ **Cursed controls** (purple `☠`) — inverts all steering for 4 s (up moves down, left moves right)
+  - ✦ **2× multiplier** (magenta `2x`) — doubles all points earned for 8 s
+- **Bonus orb** — a gold ★ star that appears after eating food; grab it for +3 pts instantly with no snake growth; expires after 5 s
+- **Combo scoring** — eating food within 2.5 s of the last eat builds a streak (×2 up to ×5), multiplying points per eat; stacks with the 2× power-up for up to ×10 per food
+- **Sound effects** — synthesised via Web Audio API (no audio files): blip on eat, two-tone chime on power-up, rising pitch per combo level, descending thud on death
+- **Speed scaling** — base tick interval decreases with score, capped at a minimum
+- **High score** — persisted in `localStorage`
+- **Responsive** — canvas scales to the largest square that fits any screen
+- **Mobile controls** — on-screen D-pad (hidden on desktop) plus swipe gestures on the canvas
+- **Keyboard** — arrow keys and WASD; Enter or Space to restart
+- **PWA-ready** — `apple-mobile-web-app-capable` meta tag and inline web app manifest; add to home screen on iOS and Android
+
+## Controls
+
+| Input | Action |
+|---|---|
+| Arrow keys / WASD | Steer |
+| Enter / Space | Restart after game over |
+| On-screen D-pad | Steer (touch devices) |
+| Swipe on canvas | Steer (touch devices) |
+
+## Scoring
+
+| Situation | Points |
+|---|---|
+| Eat food | +1 |
+| ×2 combo streak | +2 per food |
+| ×5 combo streak | +5 per food |
+| 2× multiplier active | doubles the above |
+| ×5 combo + 2× multiplier | +10 per food |
+| Grab bonus orb | +3 (no growth) |
+
+## Customising
+
+All tunable constants are at the top of the `<script>` block in `index.html`:
+
+```js
+const COLS    = 20;   // grid width
+const ROWS    = 20;   // grid height
+const BASE_MS = 160;  // starting tick interval (ms)
+const MIN_MS  = 65;   // fastest possible tick (ms)
+const ACCEL   = 3;    // ms removed per point scored
+```
+
+Power-up colours, icons, durations, and spawn probability (`0.28`) are in the `PU` object and `maybeSpawnPu()` function just below. The bonus orb spawn probability (`0.22`) and TTL (`5000 ms`) are in `maybeSpawnBonus()`.
+
+## Running locally
+
+No server needed — just open `index.html` in any modern browser:
+
+```
+open index.html          # macOS
+xdg-open index.html      # Linux
+start index.html         # Windows
+```
